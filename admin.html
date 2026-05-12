@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JIAN — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0a0d;
+      --surface: #13121a;
+      --surface-hover: #1a1924;
+      --border: #2a2835;
+      --accent: #c8a97e;
+      --accent-dim: #8a7454;
+      --green: #5cb87a;
+      --red: #c45050;
+      --yellow: #d4a843;
+      --purple: #a08bc8;
+      --text: #e8e4de;
+      --text-muted: #9a9590;
+      --text-dim: #5a5550;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-weight: 300;
+      min-height: 100vh;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 999;
+    }
+
+    /* Login gate */
+    #login-gate {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; flex-direction: column; gap: 20px;
+    }
+    #login-gate .brand { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 300; letter-spacing: 12px; color: var(--accent); }
+    #login-gate .sub { font-size: 10px; letter-spacing: 4px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 20px; }
+    #login-gate label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); }
+    #login-gate input {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 16px; width: 380px; font-family: 'DM Sans', sans-serif; font-size: 13px;
+      margin-top: 6px; border-radius: 3px; outline: none;
+    }
+    #login-gate input:focus { border-color: var(--accent-dim); }
+    #login-gate .login-btn {
+      background: transparent; border: 1px solid var(--accent-dim); color: var(--accent);
+      padding: 10px 32px; font-family: 'DM Sans', sans-serif; font-size: 11px;
+      letter-spacing: 2px; text-transform: uppercase; cursor: pointer;
+      transition: all 0.25s; border-radius: 2px; margin-top: 8px;
+    }
+    #login-gate .login-btn:hover { background: var(--accent); color: var(--bg); }
+    .login-error { color: var(--red); font-size: 12px; height: 18px; }
+
+    /* Admin shell */
+    #admin { display: none; }
+    .admin-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px; border-bottom: 1px solid var(--border);
+    }
+    .admin-brand { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 300; letter-spacing: 8px; color: var(--accent); }
+    .admin-nav { display: flex; gap: 4px; }
+    .nav-btn {
+      background: transparent; border: 1px solid transparent; color: var(--text-muted);
+      padding: 8px 16px; font-family: 'DM Sans', sans-serif; font-size: 12px;
+      cursor: pointer; transition: all 0.2s; border-radius: 3px;
+    }
+    .nav-btn:hover { color: var(--text); background: var(--surface); }
+    .nav-btn.active { color: var(--accent); border-color: var(--border); background: var(--surface); }
+
+    /* Content area */
+    .admin-content { padding: 32px; max-width: 1100px; margin: 0 auto; }
+
+    /* Stats cards */
+    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 20px;
+    }
+    .stat-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+    .stat-value { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; }
+    .stat-value.green { color: var(--green); }
+    .stat-value.red { color: var(--red); }
+    .stat-value.yellow { color: var(--yellow); }
+    .stat-value.accent { color: var(--accent); }
+
+    /* Section headers */
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 400;
+    }
+
+    /* Search bar */
+    .search-bar {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 8px 14px; font-family: 'DM Sans', sans-serif; font-size: 13px;
+      border-radius: 3px; outline: none; width: 280px;
+    }
+    .search-bar:focus { border-color: var(--accent-dim); }
+
+    /* Tables */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th {
+      font-size: 10px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text-dim); text-align: left; padding: 0 12px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 12px; border-bottom: 1px solid var(--border);
+      font-size: 13px; vertical-align: middle;
+    }
+    .data-table tr:hover { background: var(--surface-hover); }
+
+    /* Status badges */
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 2px;
+      font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    }
+    .badge-green { background: #5cb87a22; color: var(--green); }
+    .badge-red { background: #c4505022; color: var(--red); }
+    .badge-yellow { background: #d4a84322; color: var(--yellow); }
+    .badge-purple { background: #a08bc822; color: var(--purple); }
+
+    /* Inline dropdowns */
+    .assign-container { position: relative; }
+    .assign-search {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 10px; font-family: 'DM Sans', sans-serif; font-size: 12px;
+      border-radius: 3px; outline: none; width: 220px;
+    }
+    .assign-search:focus { border-color: var(--accent-dim); }
+    .assign-dropdown {
+      position: absolute; top: 100%; left: 0; width: 280px; max-height: 200px;
+      overflow-y: auto; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 3px; z-index: 50; display: none;
+    }
+    .assign-dropdown.show { display: block; }
+    .assign-option {
+      padding: 8px 12px; font-size: 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border); transition: background 0.15s;
+    }
+    .assign-option:hover { background: var(--surface-hover); color: var(--accent); }
+    .assign-option .match-hint { color: var(--text-dim); font-size: 10px; display: block; margin-top: 2px; }
+    .assign-option-new {
+      padding: 8px 12px; font-size: 12px; cursor: pointer; color: var(--accent);
+      border-bottom: 1px solid var(--border);
+    }
+    .assign-option-new:hover { background: var(--surface-hover); }
+
+    /* Inline edit for UUID */
+    .uuid-input {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 4px 8px; font-family: 'DM Sans', sans-serif; font-size: 11px;
+      border-radius: 2px; outline: none; width: 280px;
+    }
+    .uuid-input:focus { border-color: var(--accent-dim); }
+
+    /* Action buttons */
+    .btn-sm {
+      background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+      padding: 4px 12px; font-family: 'DM Sans', sans-serif; font-size: 10px;
+      letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+      transition: all 0.2s; border-radius: 2px;
+    }
+    .btn-sm:hover { border-color: var(--accent-dim); color: var(--accent); }
+    .btn-sm.save { border-color: var(--green); color: var(--green); }
+    .btn-sm.save:hover { background: var(--green); color: var(--bg); }
+
+    /* Pagination */
+    .pagination {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin-top: 20px; font-size: 12px; color: var(--text-muted);
+    }
+    .page-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+      padding: 6px 14px; font-family: 'DM Sans', sans-serif; font-size: 11px;
+      cursor: pointer; border-radius: 2px; transition: all 0.2s;
+    }
+    .page-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+    .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* Filter tabs */
+    .filter-tabs { display: flex; gap: 4px; }
+    .filter-tab {
+      background: transparent; border: 1px solid transparent; color: var(--text-dim);
+      padding: 5px 12px; font-size: 11px; cursor: pointer; border-radius: 2px;
+      font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+    }
+    .filter-tab:hover { color: var(--text-muted); }
+    .filter-tab.active { color: var(--accent); border-color: var(--border); background: var(--surface); }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 32px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface); border: 1px solid var(--green); color: var(--green);
+      padding: 12px 24px; border-radius: 4px; font-size: 13px; z-index: 100;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); pointer-events: none;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.error { border-color: var(--red); color: var(--red); }
+
+    @media (max-width: 768px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .admin-content { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="login-gate">
+  <div class="brand">JIAN</div>
+  <div class="sub">Admin Panel</div>
+  <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+    <div>
+      <label>Service Role Key</label><br>
+      <input type="password" id="key-input" placeholder="Paste your service_role key..." onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Enter</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="admin">
+  <div class="admin-header">
+    <div class="admin-brand">JIAN</div>
+    <div class="admin-nav">
+      <button class="nav-btn active" onclick="showTab('dashboard')">Dashboard</button>
+      <button class="nav-btn" onclick="showTab('products')">Products</button>
+      <button class="nav-btn" onclick="showTab('customers')">Customers</button>
+    </div>
+  </div>
+
+  <div class="admin-content">
+    <div id="tab-dashboard"></div>
+    <div id="tab-products" style="display:none"></div>
+    <div id="tab-customers" style="display:none"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://erobcqkglutdzlbwcsoa.supabase.co';
+let SERVICE_KEY = '';
+
+// ---- API helpers ----
+async function sbGet(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` }
+  });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function sbPost(path, data) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=representation'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function sbPatch(path, data) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+}
+
+async function sbRpc(fn, params) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(params)
+  });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+// ---- Login ----
+async function doLogin() {
+  SERVICE_KEY = document.getElementById('key-input').value.trim();
+  if (!SERVICE_KEY) return;
+  try {
+    await sbGet('customers?limit=1');
+    document.getElementById('login-gate').style.display = 'none';
+    document.getElementById('admin').style.display = 'block';
+    loadDashboard();
+  } catch(e) {
+    document.getElementById('login-error').textContent = 'Invalid key or connection failed';
+  }
+}
+
+// ---- Tabs ----
+function showTab(tab) {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  ['dashboard','products','customers'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t === tab ? 'block' : 'none';
+  });
+  if (tab === 'dashboard') loadDashboard();
+  if (tab === 'products') loadProducts();
+  if (tab === 'customers') loadCustomers();
+}
+
+// ---- Dashboard ----
+async function loadDashboard() {
+  const el = document.getElementById('tab-dashboard');
+  el.innerHTML = '<div style="color:var(--text-dim)">Loading stats...</div>';
+
+  try {
+    const [customers, stubs, products, ungrouped, groups, availableGroups, purchases] = await Promise.all([
+      sbGet('customers?select=uuid&limit=1&offset=0').then(() => sbGet('customers?select=count', )),
+      // Count stub customers (UUIDs that start with a hex pattern from our generator — they have '4' as 13th char and 'a' as 17th)
+      sbGet('raw_products?select=count'),
+      sbGet('raw_products?product_group_id=is.null&select=count'),
+      sbGet('product_groups?select=count'),
+      sbGet('product_groups?is_available=eq.true&select=count'),
+      sbGet('purchases?select=count'),
+    ]);
+
+    // Use HEAD with Prefer: count=exact for accurate counts
+    const customerCount = await getCount('customers');
+    const productCount = await getCount('raw_products');
+    const ungroupedCount = await getCount('raw_products?product_group_id=is.null');
+    const groupCount = await getCount('product_groups');
+    const availableCount = await getCount('product_groups?is_available=eq.true');
+    const purchaseCount = await getCount('purchases');
+    const stubCount = await getCount('customers?current_name=not.like.*%25*%25&credit=eq.0');
+
+    el.innerHTML = `
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Total Customers</div>
+          <div class="stat-value accent">${customerCount.toLocaleString()}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Purchases</div>
+          <div class="stat-value accent">${purchaseCount.toLocaleString()}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Product Groups</div>
+          <div class="stat-value green">${availableCount} <span style="font-size:14px;color:var(--text-dim)">/ ${groupCount} available</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Ungrouped Products</div>
+          <div class="stat-value ${ungroupedCount > 0 ? 'yellow' : 'green'}">${ungroupedCount}</div>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Raw Product Names</div>
+          <div class="stat-value accent">${productCount}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Auto-Match Products</div>
+          <div class="stat-value"><button class="btn-sm" onclick="runAutoMatch()">Run Auto-Match</button></div>
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red)">Error loading stats: ${e.message}</div>`;
+  }
+}
+
+async function getCount(table) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'HEAD',
+    headers: {
+      'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`,
+      'Prefer': 'count=exact'
+    }
+  });
+  const range = res.headers.get('content-range');
+  if (range) {
+    const m = range.match(/\/(\d+)/);
+    if (m) return parseInt(m[1]);
+  }
+  return 0;
+}
+
+async function runAutoMatch() {
+  try {
+    const result = await sbRpc('auto_match_products', {});
+    showToast(`Auto-matched ${result} products`);
+    loadDashboard();
+  } catch(e) {
+    showToast('Auto-match error: ' + e.message, true);
+  }
+}
+
+// ---- Products ----
+let productFilter = 'ungrouped';
+let productSearch = '';
+let productPage = 0;
+const PAGE_SIZE = 30;
+let serverInventory = [];
+
+async function loadProducts() {
+  const el = document.getElementById('tab-products');
+
+  // Load server inventory once for dropdown
+  if (serverInventory.length === 0) {
+    try { serverInventory = await sbGet('server_inventory?select=item_name&order=item_name'); }
+    catch(e) { serverInventory = []; }
+  }
+
+  el.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Product Management</div>
+      <input class="search-bar" placeholder="Search products..." oninput="productSearch=this.value;productPage=0;renderProducts()">
+    </div>
+    <div style="margin-bottom:16px">
+      <div class="filter-tabs">
+        <button class="filter-tab ${productFilter==='ungrouped'?'active':''}" onclick="productFilter='ungrouped';productPage=0;renderProducts()">Ungrouped</button>
+        <button class="filter-tab ${productFilter==='grouped'?'active':''}" onclick="productFilter='grouped';productPage=0;renderProducts()">Grouped</button>
+        <button class="filter-tab ${productFilter==='all'?'active':''}" onclick="productFilter='all';productPage=0;renderProducts()">All</button>
+      </div>
+    </div>
+    <div id="products-list"></div>
+  `;
+  renderProducts();
+}
+
+async function renderProducts() {
+  const el = document.getElementById('products-list');
+  el.innerHTML = '<div style="color:var(--text-dim)">Loading...</div>';
+
+  try {
+    let query = 'raw_products?select=id,product_name,auto_matched,product_group_id,product_groups(id,display_name,server_item_name,is_available)';
+
+    if (productFilter === 'ungrouped') query += '&product_group_id=is.null';
+    else if (productFilter === 'grouped') query += '&product_group_id=not.is.null';
+
+    if (productSearch) query += `&product_name=ilike.*${encodeURIComponent(productSearch)}*`;
+
+    query += `&order=product_name&offset=${productPage * PAGE_SIZE}&limit=${PAGE_SIZE}`;
+
+    const products = await sbGet(query);
+    const groups = await sbGet('product_groups?select=id,display_name,server_item_name,is_available&order=display_name');
+
+    if (products.length === 0) {
+      el.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:40px">No products found</div>';
+      return;
+    }
+
+    let html = `<table class="data-table"><thead><tr>
+      <th>Raw Product Name</th><th>Group</th><th>Status</th><th>Action</th>
+    </tr></thead><tbody>`;
+
+    for (const p of products) {
+      const group = p.product_groups;
+      let statusHtml, actionHtml;
+
+      if (group) {
+        statusHtml = group.is_available
+          ? '<span class="badge badge-green">Available</span>'
+          : '<span class="badge badge-red">Not in server</span>';
+        actionHtml = `<span style="color:var(--text-dim);font-size:11px">${group.auto_matched ? 'Auto' : 'Manual'}</span>`;
+      } else {
+        statusHtml = '<span class="badge badge-yellow">Ungrouped</span>';
+        actionHtml = `
+          <div class="assign-container" id="assign-${p.id}">
+            <input class="assign-search" placeholder="Search inventory..."
+              oninput="showAssignDropdown(${p.id}, this.value, ${JSON.stringify(groups.map(g=>({id:g.id,name:g.display_name,server:g.server_item_name,avail:g.is_available}))).replace(/"/g,'&quot;')})">
+            <div class="assign-dropdown" id="dropdown-${p.id}"></div>
+          </div>`;
+      }
+
+      html += `<tr>
+        <td style="font-size:13px">${escapeHtml(p.product_name)}</td>
+        <td style="font-size:13px;color:${group ? 'var(--accent)' : 'var(--text-dim)'}">${group ? escapeHtml(group.display_name) : '—'}</td>
+        <td>${statusHtml}</td>
+        <td>${actionHtml}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table>';
+    html += `<div class="pagination">
+      <button class="page-btn" onclick="productPage--;renderProducts()" ${productPage===0?'disabled':''}>← Prev</button>
+      <span>Page ${productPage+1}</span>
+      <button class="page-btn" onclick="productPage++;renderProducts()" ${products.length<PAGE_SIZE?'disabled':''}>Next →</button>
+    </div>`;
+
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function showAssignDropdown(productId, search, existingGroups) {
+  const dd = document.getElementById('dropdown-' + productId);
+  search = search.toLowerCase();
+
+  if (search.length < 1) { dd.className = 'assign-dropdown'; return; }
+
+  // Filter server inventory items
+  const invMatches = serverInventory
+    .filter(i => i.item_name.toLowerCase().includes(search))
+    .slice(0, 8);
+
+  // Filter existing groups
+  const groupMatches = existingGroups
+    .filter(g => g.name.toLowerCase().includes(search))
+    .slice(0, 5);
+
+  let html = '';
+
+  if (groupMatches.length > 0) {
+    html += '<div style="padding:6px 12px;font-size:9px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase">Existing Groups</div>';
+    for (const g of groupMatches) {
+      html += `<div class="assign-option" onclick="assignToGroup(${productId}, ${g.id})">
+        ${escapeHtml(g.name)}
+        <span class="match-hint">${g.avail ? '✅ In server' : '❌ Not in server'}${g.server ? ' — ' + escapeHtml(g.server) : ''}</span>
+      </div>`;
+    }
+  }
+
+  if (invMatches.length > 0) {
+    html += '<div style="padding:6px 12px;font-size:9px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin-top:4px">Server Inventory</div>';
+    for (const i of invMatches) {
+      html += `<div class="assign-option" onclick="createGroupFromInventory(${productId}, '${escapeHtml(i.item_name).replace(/'/g, "\\'")}')">
+        ${escapeHtml(i.item_name)}
+        <span class="match-hint">Create new group from this server item</span>
+      </div>`;
+    }
+  }
+
+  // Option to create a brand new group with custom name
+  html += `<div class="assign-option-new" onclick="createCustomGroup(${productId})">
+    + Create new group with custom name
+  </div>`;
+
+  dd.innerHTML = html;
+  dd.className = 'assign-dropdown show';
+}
+
+async function assignToGroup(rawProductId, groupId) {
+  try {
+    await sbPatch(`raw_products?id=eq.${rawProductId}`, { product_group_id: groupId });
+    showToast('Product assigned to group');
+    renderProducts();
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+async function createGroupFromInventory(rawProductId, itemName) {
+  try {
+    const groups = await sbPost('product_groups', { display_name: itemName, server_item_name: itemName, is_available: true });
+    const newGroup = groups[0];
+    await sbPatch(`raw_products?id=eq.${rawProductId}`, { product_group_id: newGroup.id });
+    showToast('New group created and product assigned');
+    renderProducts();
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+async function createCustomGroup(rawProductId) {
+  const name = prompt('Enter display name for the new product group:');
+  if (!name) return;
+  const serverName = prompt('Enter the exact server inventory item name (or leave blank if not in server):');
+  try {
+    const groups = await sbPost('product_groups', {
+      display_name: name,
+      server_item_name: serverName || null,
+      is_available: false
+    });
+    const newGroup = groups[0];
+    await sbPatch(`raw_products?id=eq.${rawProductId}`, { product_group_id: newGroup.id });
+    showToast('Custom group created and product assigned');
+    renderProducts();
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+// ---- Customers ----
+let customerSearch = '';
+let customerFilter = 'stubs';
+let customerPage = 0;
+
+async function loadCustomers() {
+  const el = document.getElementById('tab-customers');
+  el.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Customer Management</div>
+      <input class="search-bar" placeholder="Search by name..." oninput="customerSearch=this.value;customerPage=0;renderCustomers()">
+    </div>
+    <div style="margin-bottom:16px">
+      <div class="filter-tabs">
+        <button class="filter-tab ${customerFilter==='stubs'?'active':''}" onclick="customerFilter='stubs';customerPage=0;renderCustomers()">Needs UUID</button>
+        <button class="filter-tab ${customerFilter==='real'?'active':''}" onclick="customerFilter='real';customerPage=0;renderCustomers()">Has UUID</button>
+        <button class="filter-tab ${customerFilter==='all'?'active':''}" onclick="customerFilter='all';customerPage=0;renderCustomers()">All</button>
+      </div>
+    </div>
+    <div id="customers-list"></div>
+  `;
+  renderCustomers();
+}
+
+function isStubUuid(uuid) {
+  // Our generator creates UUIDs with '4' at position 14 and 'a' at position 19
+  // but so do real v4 UUIDs. Better heuristic: stub UUIDs come from fakeUuidFromName
+  // which produces deterministic hashes. We'll check credit=0 as a rough proxy.
+  // Actually, the cleanest: stubs have no real SL UUID. We'll filter differently.
+  return false; // We'll use credit=0 as filter instead
+}
+
+async function renderCustomers() {
+  const el = document.getElementById('customers-list');
+  el.innerHTML = '<div style="color:var(--text-dim)">Loading...</div>';
+
+  try {
+    let query = 'customers?select=uuid,current_name,credit,previous_names';
+
+    if (customerFilter === 'stubs') query += '&credit=eq.0';
+    else if (customerFilter === 'real') query += '&credit=neq.0';
+
+    if (customerSearch) query += `&current_name=ilike.*${encodeURIComponent(customerSearch)}*`;
+
+    query += `&order=current_name&offset=${customerPage * PAGE_SIZE}&limit=${PAGE_SIZE}`;
+
+    const customers = await sbGet(query);
+
+    if (customers.length === 0) {
+      el.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:40px">No customers found</div>';
+      return;
+    }
+
+    let html = `<table class="data-table"><thead><tr>
+      <th>Name</th><th>UUID</th><th>Credit</th><th>Previous Names</th><th>Action</th>
+    </tr></thead><tbody>`;
+
+    for (const c of customers) {
+      const shortUuid = c.uuid.substring(0, 8) + '...';
+      const prevNames = c.previous_names && c.previous_names.length > 0
+        ? c.previous_names.join(', ') : '';
+
+      html += `<tr id="row-${c.uuid}">
+        <td style="font-size:13px">${escapeHtml(c.current_name)}</td>
+        <td style="font-size:11px;font-family:monospace;color:var(--text-dim)" title="${c.uuid}">${shortUuid}</td>
+        <td>${c.credit}</td>
+        <td style="font-size:11px;color:var(--text-dim)">${escapeHtml(prevNames)}</td>
+        <td>
+          <button class="btn-sm" onclick="editCustomerUuid('${c.uuid}', '${escapeHtml(c.current_name)}')">Edit UUID</button>
+        </td>
+      </tr>`;
+    }
+
+    html += '</tbody></table>';
+    html += `<div class="pagination">
+      <button class="page-btn" onclick="customerPage--;renderCustomers()" ${customerPage===0?'disabled':''}>← Prev</button>
+      <span>Page ${customerPage+1}</span>
+      <button class="page-btn" onclick="customerPage++;renderCustomers()" ${customers.length<PAGE_SIZE?'disabled':''}>Next →</button>
+    </div>`;
+
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+async function editCustomerUuid(currentUuid, name) {
+  const newUuid = prompt(`Enter the real SL UUID for "${name}":\n\nCurrent: ${currentUuid}`);
+  if (!newUuid) return;
+
+  // Validate UUID format
+  if (!newUuid.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    showToast('Invalid UUID format', true);
+    return;
+  }
+
+  if (newUuid.toLowerCase() === currentUuid.toLowerCase()) {
+    showToast('Same UUID, no change needed');
+    return;
+  }
+
+  try {
+    // We need to:
+    // 1. Create new customer record with the real UUID
+    // 2. Update all purchases that reference the old UUID
+    // 3. Delete the old customer record
+
+    // Get old customer data
+    const oldCustomers = await sbGet(`customers?uuid=eq.${currentUuid}`);
+    if (oldCustomers.length === 0) { showToast('Customer not found', true); return; }
+    const old = oldCustomers[0];
+
+    // Check if real UUID already exists
+    const existing = await sbGet(`customers?uuid=eq.${newUuid}`);
+
+    if (existing.length > 0) {
+      // Merge: update purchases to point to existing customer, add old name to previous_names
+      const existingCustomer = existing[0];
+      const prevNames = [...(existingCustomer.previous_names || [])];
+      if (!prevNames.includes(old.current_name)) prevNames.push(old.current_name);
+
+      await sbPatch(`customers?uuid=eq.${newUuid}`, { previous_names: prevNames });
+      await sbPatch(`purchases?buyer_uuid=eq.${currentUuid}`, { buyer_uuid: newUuid });
+      await sbPatch(`purchases?recipient_uuid=eq.${currentUuid}`, { recipient_uuid: newUuid });
+      await sbPatch(`redelivery_requests?customer_uuid=eq.${currentUuid}`, { customer_uuid: newUuid });
+
+      // Delete old stub
+      await fetch(`${SUPABASE_URL}/rest/v1/customers?uuid=eq.${currentUuid}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` }
+      });
+
+      showToast(`Merged "${name}" into existing customer ${existingCustomer.current_name}`);
+    } else {
+      // Create new, migrate, delete old
+      await sbPost('customers', { uuid: newUuid, current_name: old.current_name, credit: old.credit, previous_names: old.previous_names || [] });
+      await sbPatch(`purchases?buyer_uuid=eq.${currentUuid}`, { buyer_uuid: newUuid });
+      await sbPatch(`purchases?recipient_uuid=eq.${currentUuid}`, { recipient_uuid: newUuid });
+      await sbPatch(`redelivery_requests?customer_uuid=eq.${currentUuid}`, { customer_uuid: newUuid });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/customers?uuid=eq.${currentUuid}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` }
+      });
+
+      showToast(`UUID updated for "${name}"`);
+    }
+
+    renderCustomers();
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close dropdowns on click outside
+document.addEventListener('click', (e) => {
+  if (!e.target.classList.contains('assign-search')) {
+    document.querySelectorAll('.assign-dropdown').forEach(d => d.className = 'assign-dropdown');
+  }
+});
+</script>
+</body>
+</html>
