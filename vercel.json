@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/redeliver/:uuid", "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JIAN — Redelivery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0a0d;
+      --surface: #13121a;
+      --surface-hover: #1a1924;
+      --border: #2a2835;
+      --border-light: #3a3848;
+      --accent: #c8a97e;
+      --accent-dim: #8a7454;
+      --accent-glow: #c8a97e22;
+      --green: #5cb87a;
+      --green-dim: #2a4a35;
+      --red: #c45050;
+      --red-dim: #3a2020;
+      --text: #e8e4de;
+      --text-muted: #9a9590;
+      --text-dim: #5a5550;
+      --gift-purple: #a08bc8;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 300;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Subtle grain overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 60px 24px 80px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 56px;
+      animation: fadeIn 0.8s ease-out;
+    }
+
+    .brand {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 42px;
+      font-weight: 300;
+      letter-spacing: 14px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .divider {
+      width: 48px;
+      height: 1px;
+      background: var(--accent-dim);
+      margin: 20px auto 0;
+    }
+
+    /* Welcome */
+    .welcome {
+      text-align: center;
+      margin-bottom: 40px;
+      animation: fadeIn 0.8s ease-out 0.2s both;
+    }
+
+    .welcome-name {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 400;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .welcome-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Table */
+    .purchases-table {
+      width: 100%;
+      border-collapse: collapse;
+      animation: fadeIn 0.8s ease-out 0.4s both;
+    }
+
+    .purchases-table thead th {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      text-align: left;
+      padding: 0 16px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .purchases-table thead th:last-child {
+      text-align: right;
+    }
+
+    .purchases-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+
+    .purchases-table tbody tr:hover {
+      background: var(--surface);
+    }
+
+    .purchases-table td {
+      padding: 16px;
+      vertical-align: middle;
+    }
+
+    .product-name {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 17px;
+      font-weight: 400;
+      color: var(--text);
+      line-height: 1.3;
+    }
+
+    .product-raw {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .gift-tag {
+      font-size: 12px;
+      color: var(--gift-purple);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .gift-tag .gift-icon {
+      font-size: 13px;
+    }
+
+    .gift-label {
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+
+    /* Buttons */
+    .btn-redeliver {
+      float: right;
+      background: transparent;
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 8px 18px;
+      cursor: pointer;
+      transition: all 0.25s;
+      border-radius: 2px;
+    }
+
+    .btn-redeliver:hover {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
+
+    .btn-redeliver:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .btn-redeliver.sent {
+      border-color: var(--green);
+      color: var(--green);
+      pointer-events: none;
+    }
+
+    .btn-redeliver.sent::after {
+      content: ' ✓';
+    }
+
+    .unavailable {
+      float: right;
+      font-size: 16px;
+      color: var(--red);
+      opacity: 0.7;
+      cursor: default;
+      title: "Not available for redelivery";
+    }
+
+    /* States */
+    .loading-state, .error-state, .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      animation: fadeIn 0.8s ease-out;
+    }
+
+    .loading-spinner {
+      width: 24px;
+      height: 24px;
+      border: 1.5px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    .error-state .error-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .error-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .error-detail {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Date column */
+    .date-cell {
+      font-size: 12px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface);
+      border: 1px solid var(--green);
+      color: var(--green);
+      padding: 12px 24px;
+      border-radius: 4px;
+      font-size: 13px;
+      z-index: 100;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 56px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-dim);
+      animation: fadeIn 0.8s ease-out 0.6s both;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .container { padding: 40px 16px 60px; }
+      .brand { font-size: 32px; letter-spacing: 10px; }
+      .purchases-table thead { display: none; }
+      .purchases-table, .purchases-table tbody, .purchases-table tr, .purchases-table td {
+        display: block;
+      }
+      .purchases-table tr {
+        padding: 16px 0;
+        position: relative;
+      }
+      .purchases-table td { padding: 4px 0; }
+      .purchases-table td:last-child { padding-top: 12px; }
+      .btn-redeliver { float: none; }
+      .unavailable { float: none; display: inline-block; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="brand">JIAN</div>
+    <div class="subtitle">Purchase Redelivery</div>
+    <div class="divider"></div>
+  </div>
+
+  <div id="content">
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <div style="font-size: 13px; color: var(--text-muted);">Loading your purchases...</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Items marked ❌ are not currently available for redelivery.<br>
+    Please allow up to 60 seconds for delivery after requesting.
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const SUPABASE_URL = 'https://erobcqkglutdzlbwcsoa.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVyb2JjcWtnbHV0ZHpsYndjc29hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1OTM3ODIsImV4cCI6MjA5NDE2OTc4Mn0.OPSaomrnwPMExys6YpwBbLnkjCBF3o-2vUw1Op_cMmU';
+
+  async function sbGet(path) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+      }
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.json();
+  }
+
+  async function sbPost(path, data) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err);
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function getUuidFromUrl() {
+    const path = window.location.pathname;
+    const match = path.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (match) return match[1];
+    const params = new URLSearchParams(window.location.search);
+    return params.get('uuid');
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  async function requestRedelivery(btn, customerUuid, productGroupId) {
+    btn.disabled = true;
+    btn.textContent = 'SENDING...';
+
+    try {
+      await sbPost('redelivery_requests', {
+        customer_uuid: customerUuid,
+        product_group_id: productGroupId,
+        status: 'pending'
+      });
+      btn.classList.add('sent');
+      btn.textContent = 'QUEUED';
+      showToast('Redelivery requested! Item will arrive in-world shortly.');
+    } catch (err) {
+      if (err.message.includes('idx_one_pending_per_product')) {
+        btn.classList.add('sent');
+        btn.textContent = 'ALREADY QUEUED';
+        showToast('This item is already queued for redelivery.');
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'REDELIVER';
+        showToast('Something went wrong. Please try again.');
+        console.error('Redelivery error:', err);
+      }
+    }
+  }
+
+  async function loadPage() {
+    const content = document.getElementById('content');
+    const uuid = getUuidFromUrl();
+
+    if (!uuid) {
+      content.innerHTML = `
+        <div class="error-state">
+          <div class="error-icon">🔑</div>
+          <div class="error-title">No customer ID provided</div>
+          <div class="error-detail">
+            Please use the link from the in-world redelivery terminal.<br>
+            The URL should contain your Second Life UUID.
+          </div>
+        </div>`;
+      return;
+    }
+
+    try {
+      // Load customer
+      const customers = await sbGet(`customers?uuid=eq.${uuid}&select=uuid,current_name`);
+      if (customers.length === 0) {
+        content.innerHTML = `
+          <div class="error-state">
+            <div class="error-icon">🔍</div>
+            <div class="error-title">Customer not found</div>
+            <div class="error-detail">
+              We couldn't find an account with this UUID.<br>
+              Please contact support if you believe this is an error.
+            </div>
+          </div>`;
+        return;
+      }
+
+      const customer = customers[0];
+
+      // Load purchases where this customer is buyer OR recipient
+      const [buyerPurchases, recipientPurchases] = await Promise.all([
+        sbGet(`purchases?buyer_uuid=eq.${uuid}&select=id,buyer_name,recipient_name,is_gift,purchased_at,raw_product_id,raw_products(id,product_name,product_group_id,product_groups(id,display_name,is_available))`),
+        sbGet(`purchases?recipient_uuid=eq.${uuid}&buyer_uuid=neq.${uuid}&select=id,buyer_name,recipient_name,is_gift,purchased_at,raw_product_id,raw_products(id,product_name,product_group_id,product_groups(id,display_name,is_available))`)
+      ]);
+
+      // Mark perspective
+      buyerPurchases.forEach(p => p._perspective = 'buyer');
+      recipientPurchases.forEach(p => p._perspective = 'recipient');
+      const allPurchases = [...buyerPurchases, ...recipientPurchases];
+
+      // Sort by date descending
+      allPurchases.sort((a, b) => new Date(b.purchased_at || 0) - new Date(a.purchased_at || 0));
+
+      // Deduplicate by product group (show each product once, most recent purchase)
+      const seen = new Map();
+      const dedupedPurchases = [];
+      for (const p of allPurchases) {
+        const groupId = p.raw_products?.product_groups?.id || `raw_${p.raw_product_id}`;
+        const key = `${groupId}_${p._perspective}`;
+        if (!seen.has(key)) {
+          seen.set(key, true);
+          dedupedPurchases.push(p);
+        }
+      }
+
+      if (dedupedPurchases.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="error-icon">📦</div>
+            <div class="error-title">No purchases found</div>
+            <div class="error-detail">
+              We couldn't find any purchase records for this account.
+            </div>
+          </div>`;
+        return;
+      }
+
+      // Build welcome
+      let html = `
+        <div class="welcome">
+          <div class="welcome-name">Welcome back, ${escapeHtml(customer.current_name)}</div>
+          <div class="welcome-sub">${dedupedPurchases.length} product${dedupedPurchases.length !== 1 ? 's' : ''} in your history</div>
+        </div>
+        <table class="purchases-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Gift</th>
+              <th>Date</th>
+              <th style="text-align:right">Redeliver</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+      for (const p of dedupedPurchases) {
+        const group = p.raw_products?.product_groups;
+        const rawName = p.raw_products?.product_name || 'Unknown product';
+        const displayName = group?.display_name || rawName;
+        const isAvailable = group?.is_available === true;
+        const groupId = group?.id;
+
+        // Gift column
+        let giftHtml = '';
+        if (p.is_gift) {
+          if (p._perspective === 'recipient') {
+            giftHtml = `<div class="gift-tag"><span class="gift-icon">🎁</span> <span>from ${escapeHtml(p.buyer_name || 'someone')}</span></div>`;
+          } else {
+            giftHtml = `<div class="gift-tag"><span class="gift-icon">🎁</span> <span>to ${escapeHtml(p.recipient_name || 'someone')}</span></div>`;
+          }
+        }
+
+        // Action column
+        let actionHtml;
+        if (!groupId) {
+          actionHtml = '<span class="unavailable" title="Product not yet configured">❌</span>';
+        } else if (!isAvailable) {
+          actionHtml = '<span class="unavailable" title="Not in delivery server">❌</span>';
+        } else {
+          actionHtml = `<button class="btn-redeliver" onclick="requestRedelivery(this, '${uuid}', ${groupId})">REDELIVER</button>`;
+        }
+
+        html += `
+            <tr>
+              <td>
+                <div class="product-name">${escapeHtml(displayName)}</div>
+                ${displayName !== rawName ? `<div class="product-raw">${escapeHtml(rawName)}</div>` : ''}
+              </td>
+              <td>${giftHtml}</td>
+              <td class="date-cell">${formatDate(p.purchased_at)}</td>
+              <td>${actionHtml}</td>
+            </tr>`;
+      }
+
+      html += '</tbody></table>';
+      content.innerHTML = html;
+
+    } catch (err) {
+      console.error('Load error:', err);
+      content.innerHTML = `
+        <div class="error-state">
+          <div class="error-icon">⚠️</div>
+          <div class="error-title">Something went wrong</div>
+          <div class="error-detail">
+            We had trouble loading your data. Please try refreshing the page.<br>
+            If the problem persists, contact support.
+          </div>
+        </div>`;
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // Go
+  loadPage();
+</script>
+</body>
+</html>
