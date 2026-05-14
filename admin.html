@@ -805,7 +805,7 @@ function loadImportTab() {
         <div>
           <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Customer Name</label>
           <div style="position:relative">
-            <input class="search-bar" id="manual-customer" style="width:100%;margin-top:4px" placeholder="Start typing a name..."
+            <input class="search-bar" id="manual-customer" style="width:100%;margin-top:4px" placeholder="Name or UUID..."
               oninput="searchCustomerForManual(this.value)">
             <div id="manual-customer-dropdown" style="position:absolute;top:100%;left:0;width:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:3px;z-index:50;display:none"></div>
           </div>
@@ -858,7 +858,7 @@ function loadImportTab() {
         <div>
           <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Recipient</label>
           <div style="position:relative">
-            <input class="search-bar" id="send-customer" style="width:100%;margin-top:4px" placeholder="Start typing a name..."
+            <input class="search-bar" id="send-customer" style="width:100%;margin-top:4px" placeholder="Name or UUID..."
               oninput="searchCustomerForSend(this.value)">
             <div id="send-customer-dropdown" style="position:absolute;top:100%;left:0;width:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:3px;z-index:50;display:none"></div>
           </div>
@@ -889,6 +889,42 @@ function loadImportTab() {
 let manualCustomerUuid = null;
 let manualProductId = null;
 
+// SL API key for name/UUID lookups
+const SL_API_KEY = 'adcd1cad-bfe6-45f0-9eb0-265466fa85c7';
+
+function isUuid(str) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+}
+
+async function slLookupName(uuid) {
+  try {
+    const res = await fetch('https://api.secondlife.com/get_agent_id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': SL_API_KEY },
+      body: JSON.stringify({ username: uuid })
+    });
+    if (res.ok) return await res.json();
+  } catch(e) {}
+  return null;
+}
+
+async function slLookupUuid(username, lastname) {
+  try {
+    const body = { username: username };
+    if (lastname && lastname !== 'Resident') body.lastname = lastname;
+    const res = await fetch('https://api.secondlife.com/get_agent_id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': SL_API_KEY },
+      body: JSON.stringify(body)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.agent_id && data.agent_id !== '00000000-0000-0000-0000-000000000000') return data;
+    }
+  } catch(e) {}
+  return null;
+}
+
 async function searchCustomerForManual(query) {
   const dd = document.getElementById('manual-customer-dropdown');
   const status = document.getElementById('manual-customer-status');
@@ -897,22 +933,90 @@ async function searchCustomerForManual(query) {
   if (query.length < 2) { dd.style.display = 'none'; status.innerHTML = ''; return; }
 
   try {
-    const results = await sbGet(`customers?current_name=ilike.*${encodeURIComponent(query)}*&select=uuid,current_name&limit=8`);
-    if (results.length === 0) {
+    let results;
+
+    if (isUuid(query)) {
+      // UUID entered — look up in database first
+      results = await sbGet(`customers?uuid=eq.${query.trim()}&select=uuid,current_name`);
+      if (results.length > 0) {
+        selectManualCustomer(results[0].uuid, results[0].current_name);
+        return;
+      }
+      // Not in database — try SL API
+      status.innerHTML = '<span style="color:var(--text-muted)">Not in database, checking Second Life...</span>';
+      dd.style.display = 'none';
+      const slData = await slLookupName(query.trim());
+      if (slData && slData.username) {
+        const displayName = slData.lastname && slData.lastname !== 'Resident' 
+          ? slData.username + '.' + slData.lastname 
+          : slData.username;
+        // Offer to add them
+        dd.innerHTML = `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--accent)"
+          onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+          onclick="addAndSelectManualCustomer('${query.trim()}','${escapeHtml(displayName)}')">
+          <span style="color:var(--purple)">SL:</span> ${escapeHtml(displayName)}<br>
+          <span style="color:var(--text-dim);font-size:10px">Click to add to database and select</span>
+        </div>`;
+        dd.style.display = 'block';
+        status.innerHTML = '<span style="color:var(--purple)">Found in Second Life (not yet in your database)</span>';
+      } else {
+        status.innerHTML = '<span style="color:var(--red)">UUID not found in database or Second Life</span>';
+      }
+      return;
+    }
+
+    // Name search — check database
+    results = await sbGet(`customers?current_name=ilike.*${encodeURIComponent(query)}*&select=uuid,current_name&limit=8`);
+    
+    let html = results.map(c =>
+      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)" 
+        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+        onclick="selectManualCustomer('${c.uuid}','${escapeHtml(c.current_name)}')">${escapeHtml(c.current_name)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${c.uuid.substring(0,8)}...</span></div>`
+    ).join('');
+
+    // If few/no results, also try SL API
+    if (results.length < 3 && query.length >= 3) {
+      const parts = query.split('.');
+      const slData = await slLookupUuid(parts[0], parts[1]);
+      if (slData && slData.agent_id && slData.agent_id !== '00000000-0000-0000-0000-000000000000') {
+        // Check if this UUID is already in results
+        const alreadyShown = results.some(r => r.uuid === slData.agent_id);
+        if (!alreadyShown) {
+          const slName = slData.lastname && slData.lastname !== 'Resident'
+            ? slData.username + '.' + slData.lastname
+            : slData.username;
+          html += `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+            onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+            onclick="addAndSelectManualCustomer('${slData.agent_id}','${escapeHtml(slName)}')">
+            <span style="color:var(--purple)">SL:</span> ${escapeHtml(slName)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${slData.agent_id.substring(0,8)}...</span><br>
+            <span style="color:var(--text-dim);font-size:10px">Click to add to database and select</span>
+          </div>`;
+        }
+      }
+    }
+
+    if (!html) {
       dd.style.display = 'none';
       status.innerHTML = '<span style="color:var(--red)">No customer found</span>';
       return;
     }
 
-    dd.innerHTML = results.map(c =>
-      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)" 
-        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
-        onclick="selectManualCustomer('${c.uuid}','${escapeHtml(c.current_name)}')">${escapeHtml(c.current_name)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${c.uuid.substring(0,8)}...</span></div>`
-    ).join('');
+    dd.innerHTML = html;
     dd.style.display = 'block';
+    status.innerHTML = '';
   } catch(e) {
-    status.innerHTML = '<span style="color:var(--red)">Search error</span>';
+    status.innerHTML = '<span style="color:var(--red)">Search error: ' + e.message + '</span>';
   }
+}
+
+async function addAndSelectManualCustomer(uuid, name) {
+  try {
+    await sbPost('customers', { uuid: uuid, current_name: name, credit: 0 });
+    showToast('Customer "' + name + '" added to database');
+  } catch(e) {
+    // Might already exist, that's fine
+  }
+  selectManualCustomer(uuid, name);
 }
 
 function selectManualCustomer(uuid, name) {
@@ -1040,22 +1144,82 @@ async function searchCustomerForSend(query) {
   if (query.length < 2) { dd.style.display = 'none'; status.innerHTML = ''; return; }
 
   try {
-    const results = await sbGet(`customers?current_name=ilike.*${encodeURIComponent(query)}*&select=uuid,current_name&limit=8`);
-    if (results.length === 0) {
+    let results;
+
+    if (isUuid(query)) {
+      results = await sbGet(`customers?uuid=eq.${query.trim()}&select=uuid,current_name`);
+      if (results.length > 0) {
+        selectSendCustomer(results[0].uuid, results[0].current_name);
+        return;
+      }
+      status.innerHTML = '<span style="color:var(--text-muted)">Not in database, checking Second Life...</span>';
+      dd.style.display = 'none';
+      const slData = await slLookupName(query.trim());
+      if (slData && slData.username) {
+        const displayName = slData.lastname && slData.lastname !== 'Resident'
+          ? slData.username + '.' + slData.lastname
+          : slData.username;
+        dd.innerHTML = `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--accent)"
+          onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+          onclick="addAndSelectSendCustomer('${query.trim()}','${escapeHtml(displayName)}')">
+          <span style="color:var(--purple)">SL:</span> ${escapeHtml(displayName)}<br>
+          <span style="color:var(--text-dim);font-size:10px">Click to add to database and select</span>
+        </div>`;
+        dd.style.display = 'block';
+        status.innerHTML = '<span style="color:var(--purple)">Found in Second Life (not yet in your database)</span>';
+      } else {
+        status.innerHTML = '<span style="color:var(--red)">UUID not found in database or Second Life</span>';
+      }
+      return;
+    }
+
+    results = await sbGet(`customers?current_name=ilike.*${encodeURIComponent(query)}*&select=uuid,current_name&limit=8`);
+    
+    let html = results.map(c =>
+      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+        onclick="selectSendCustomer('${c.uuid}','${escapeHtml(c.current_name)}')">${escapeHtml(c.current_name)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${c.uuid.substring(0,8)}...</span></div>`
+    ).join('');
+
+    if (results.length < 3 && query.length >= 3) {
+      const parts = query.split('.');
+      const slData = await slLookupUuid(parts[0], parts[1]);
+      if (slData && slData.agent_id && slData.agent_id !== '00000000-0000-0000-0000-000000000000') {
+        const alreadyShown = results.some(r => r.uuid === slData.agent_id);
+        if (!alreadyShown) {
+          const slName = slData.lastname && slData.lastname !== 'Resident'
+            ? slData.username + '.' + slData.lastname
+            : slData.username;
+          html += `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+            onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+            onclick="addAndSelectSendCustomer('${slData.agent_id}','${escapeHtml(slName)}')">
+            <span style="color:var(--purple)">SL:</span> ${escapeHtml(slName)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${slData.agent_id.substring(0,8)}...</span><br>
+            <span style="color:var(--text-dim);font-size:10px">Click to add to database and select</span>
+          </div>`;
+        }
+      }
+    }
+
+    if (!html) {
       dd.style.display = 'none';
       status.innerHTML = '<span style="color:var(--red)">No customer found</span>';
       return;
     }
 
-    dd.innerHTML = results.map(c =>
-      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
-        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
-        onclick="selectSendCustomer('${c.uuid}','${escapeHtml(c.current_name)}')">${escapeHtml(c.current_name)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${c.uuid.substring(0,8)}...</span></div>`
-    ).join('');
+    dd.innerHTML = html;
     dd.style.display = 'block';
+    status.innerHTML = '';
   } catch(e) {
-    status.innerHTML = '<span style="color:var(--red)">Search error</span>';
+    status.innerHTML = '<span style="color:var(--red)">Search error: ' + e.message + '</span>';
   }
+}
+
+async function addAndSelectSendCustomer(uuid, name) {
+  try {
+    await sbPost('customers', { uuid: uuid, current_name: name, credit: 0 });
+    showToast('Customer "' + name + '" added to database');
+  } catch(e) {}
+  selectSendCustomer(uuid, name);
 }
 
 function selectSendCustomer(uuid, name) {
