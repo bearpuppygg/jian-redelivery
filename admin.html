@@ -237,6 +237,7 @@
       <button class="nav-btn active" onclick="showTab('dashboard')">Dashboard</button>
       <button class="nav-btn" onclick="showTab('products')">Products</button>
       <button class="nav-btn" onclick="showTab('customers')">Customers</button>
+      <button class="nav-btn" onclick="showTab('import')">Data Import</button>
     </div>
   </div>
 
@@ -244,6 +245,7 @@
     <div id="tab-dashboard"></div>
     <div id="tab-products" style="display:none"></div>
     <div id="tab-customers" style="display:none"></div>
+    <div id="tab-import" style="display:none"></div>
   </div>
 </div>
 
@@ -325,12 +327,13 @@ async function doLogin() {
 function showTab(tab) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
-  ['dashboard','products','customers'].forEach(t => {
+  ['dashboard','products','customers','import'].forEach(t => {
     document.getElementById('tab-'+t).style.display = t === tab ? 'block' : 'none';
   });
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'products') loadProducts();
   if (tab === 'customers') loadCustomers();
+  if (tab === 'import') loadImportTab();
 }
 
 // ---- Dashboard ----
@@ -763,6 +766,556 @@ async function editCustomerUuid(currentUuid, name) {
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ---- Data Import ----
+let importNameMap = null; // cached customer lookup
+
+async function buildNameMap() {
+  if (importNameMap) return importNameMap;
+  importNameMap = new Map();
+  let offset = 0;
+  while (true) {
+    const batch = await sbGet(`customers?select=uuid,current_name,previous_names&offset=${offset}&limit=10000`);
+    for (const c of batch) {
+      importNameMap.set(c.current_name.toLowerCase(), { uuid: c.uuid, name: c.current_name });
+      if (c.previous_names) {
+        for (const pn of c.previous_names) {
+          importNameMap.set(pn.toLowerCase(), { uuid: c.uuid, name: c.current_name });
+        }
+      }
+    }
+    offset += batch.length;
+    if (batch.length < 10000) break;
+  }
+  return importNameMap;
+}
+
+function loadImportTab() {
+  const el = document.getElementById('tab-import');
+  el.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Data Import</div>
+    </div>
+
+    <!-- Manual Entry -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:24px;margin-bottom:24px">
+      <div style="font-size:14px;color:var(--accent);margin-bottom:16px;letter-spacing:1px">Manual Transaction Entry</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Customer Name</label>
+          <div style="position:relative">
+            <input class="search-bar" id="manual-customer" style="width:100%;margin-top:4px" placeholder="Start typing a name..."
+              oninput="searchCustomerForManual(this.value)">
+            <div id="manual-customer-dropdown" style="position:absolute;top:100%;left:0;width:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:3px;z-index:50;display:none"></div>
+          </div>
+          <div id="manual-customer-status" style="font-size:11px;margin-top:4px;height:16px"></div>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Product Name</label>
+          <div style="position:relative">
+            <input class="search-bar" id="manual-product" style="width:100%;margin-top:4px" placeholder="Start typing a product..."
+              oninput="searchProductForManual(this.value)">
+            <div id="manual-product-dropdown" style="position:absolute;top:100%;left:0;width:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:3px;z-index:50;display:none"></div>
+          </div>
+          <div id="manual-product-status" style="font-size:11px;margin-top:4px;height:16px"></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Gift From (leave blank if not a gift)</label>
+          <input class="search-bar" id="manual-giftfrom" style="width:100%;margin-top:4px" placeholder="Buyer name if this was a gift...">
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Region (optional)</label>
+          <input class="search-bar" id="manual-region" style="width:100%;margin-top:4px" placeholder="SL region name...">
+        </div>
+      </div>
+      <button class="btn-sm save" onclick="submitManualEntry()" style="padding:8px 24px;font-size:11px">Add Transaction</button>
+    </div>
+
+    <!-- CSV Upload -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:24px;margin-bottom:24px">
+      <div style="font-size:14px;color:var(--accent);margin-bottom:8px;letter-spacing:1px">CSV Import</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px">
+        Upload a sales CSV with columns: Product, Customer, Amount, Method, Reward, Recipient, Region, Date.<br>
+        Duplicate transactions (same buyer + product + date) will be skipped.
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <input type="file" id="csv-file" accept=".csv" style="font-size:12px;color:var(--text-muted)">
+        <button class="btn-sm save" onclick="importCsv()" style="padding:8px 24px;font-size:11px">Import CSV</button>
+      </div>
+      <div id="csv-progress" style="margin-top:16px"></div>
+    </div>
+
+    <!-- Send Item In-World -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:24px;margin-bottom:24px">
+      <div style="font-size:14px;color:var(--accent);margin-bottom:8px;letter-spacing:1px">Send Item In-World</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px">
+        Send an item directly to a customer via the delivery server. Only available products (✅) can be sent.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Recipient</label>
+          <div style="position:relative">
+            <input class="search-bar" id="send-customer" style="width:100%;margin-top:4px" placeholder="Start typing a name..."
+              oninput="searchCustomerForSend(this.value)">
+            <div id="send-customer-dropdown" style="position:absolute;top:100%;left:0;width:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:3px;z-index:50;display:none"></div>
+          </div>
+          <div id="send-customer-status" style="font-size:11px;margin-top:4px;height:16px"></div>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Product Group</label>
+          <div style="position:relative">
+            <input class="search-bar" id="send-product" style="width:100%;margin-top:4px" placeholder="Search available products..."
+              oninput="searchProductForSend(this.value)">
+            <div id="send-product-dropdown" style="position:absolute;top:100%;left:0;width:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:3px;z-index:50;display:none"></div>
+          </div>
+          <div id="send-product-status" style="font-size:11px;margin-top:4px;height:16px"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <button class="btn-sm save" onclick="sendItemInWorld()" style="padding:8px 24px;font-size:11px">Send Item</button>
+        <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="send-also-record" checked> Also record as a purchase
+        </label>
+      </div>
+      <div id="send-status" style="margin-top:12px"></div>
+    </div>
+  `;
+}
+
+// Manual entry state
+let manualCustomerUuid = null;
+let manualProductId = null;
+
+async function searchCustomerForManual(query) {
+  const dd = document.getElementById('manual-customer-dropdown');
+  const status = document.getElementById('manual-customer-status');
+  manualCustomerUuid = null;
+
+  if (query.length < 2) { dd.style.display = 'none'; status.innerHTML = ''; return; }
+
+  try {
+    const results = await sbGet(`customers?current_name=ilike.*${encodeURIComponent(query)}*&select=uuid,current_name&limit=8`);
+    if (results.length === 0) {
+      dd.style.display = 'none';
+      status.innerHTML = '<span style="color:var(--red)">No customer found</span>';
+      return;
+    }
+
+    dd.innerHTML = results.map(c =>
+      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)" 
+        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+        onclick="selectManualCustomer('${c.uuid}','${escapeHtml(c.current_name)}')">${escapeHtml(c.current_name)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${c.uuid.substring(0,8)}...</span></div>`
+    ).join('');
+    dd.style.display = 'block';
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--red)">Search error</span>';
+  }
+}
+
+function selectManualCustomer(uuid, name) {
+  manualCustomerUuid = uuid;
+  document.getElementById('manual-customer').value = name;
+  document.getElementById('manual-customer-dropdown').style.display = 'none';
+  document.getElementById('manual-customer-status').innerHTML = '<span style="color:var(--green)">✓ ' + escapeHtml(name) + ' (' + uuid.substring(0,8) + '...)</span>';
+}
+
+async function searchProductForManual(query) {
+  const dd = document.getElementById('manual-product-dropdown');
+  const status = document.getElementById('manual-product-status');
+  manualProductId = null;
+
+  if (query.length < 2) { dd.style.display = 'none'; status.innerHTML = ''; return; }
+
+  try {
+    const results = await sbGet(`raw_products?product_name=ilike.*${encodeURIComponent(query)}*&select=id,product_name&limit=8`);
+    if (results.length === 0) {
+      dd.style.display = 'none';
+      status.innerHTML = '<span style="color:var(--yellow)">Not found — will create new product</span>';
+      return;
+    }
+
+    dd.innerHTML = results.map(p =>
+      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+        onclick="selectManualProduct(${p.id},'${escapeHtml(p.product_name).replace(/'/g, "\\'")}')">${escapeHtml(p.product_name)}</div>`
+    ).join('');
+    dd.style.display = 'block';
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--red)">Search error</span>';
+  }
+}
+
+function selectManualProduct(id, name) {
+  manualProductId = id;
+  document.getElementById('manual-product').value = name;
+  document.getElementById('manual-product-dropdown').style.display = 'none';
+  document.getElementById('manual-product-status').innerHTML = '<span style="color:var(--green)">✓ ' + escapeHtml(name) + '</span>';
+}
+
+async function submitManualEntry() {
+  const customerInput = document.getElementById('manual-customer').value.trim();
+  const productInput = document.getElementById('manual-product').value.trim();
+  const giftFrom = document.getElementById('manual-giftfrom').value.trim();
+  const region = document.getElementById('manual-region').value.trim();
+
+  if (!manualCustomerUuid) {
+    showToast('Please select a valid customer from the dropdown', true);
+    return;
+  }
+  if (!productInput) {
+    showToast('Please enter a product name', true);
+    return;
+  }
+
+  try {
+    // Get or create product
+    let productId = manualProductId;
+    if (!productId) {
+      const created = await sbPost('raw_products', { product_name: productInput });
+      productId = created[0].id;
+    }
+
+    // Resolve gift buyer if provided
+    let buyerUuid = manualCustomerUuid;
+    let buyerName = customerInput;
+    let recipientUuid = manualCustomerUuid;
+    let recipientName = null;
+    let isGift = false;
+
+    if (giftFrom) {
+      // The "customer" is the recipient, giftFrom is the buyer
+      const nameMap = await buildNameMap();
+      const buyer = nameMap.get(giftFrom.toLowerCase());
+      if (buyer) {
+        buyerUuid = buyer.uuid;
+        buyerName = giftFrom;
+        recipientName = customerInput;
+        isGift = true;
+      } else {
+        showToast('Gift buyer "' + giftFrom + '" not found in database', true);
+        return;
+      }
+    }
+
+    await sbPost('purchases', {
+      buyer_uuid: buyerUuid,
+      recipient_uuid: recipientUuid,
+      buyer_name: buyerName,
+      recipient_name: recipientName,
+      raw_product_id: productId,
+      is_gift: isGift,
+      purchased_at: new Date().toISOString(),
+      region: region || null
+    });
+
+    showToast('Transaction added successfully!');
+    // Clear form
+    document.getElementById('manual-customer').value = '';
+    document.getElementById('manual-product').value = '';
+    document.getElementById('manual-giftfrom').value = '';
+    document.getElementById('manual-region').value = '';
+    document.getElementById('manual-customer-status').innerHTML = '';
+    document.getElementById('manual-product-status').innerHTML = '';
+    manualCustomerUuid = null;
+    manualProductId = null;
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+// ---- CSV Import ----
+// ---- Send Item In-World ----
+let sendCustomerUuid = null;
+let sendProductGroupId = null;
+let sendProductGroupName = null;
+
+async function searchCustomerForSend(query) {
+  const dd = document.getElementById('send-customer-dropdown');
+  const status = document.getElementById('send-customer-status');
+  sendCustomerUuid = null;
+
+  if (query.length < 2) { dd.style.display = 'none'; status.innerHTML = ''; return; }
+
+  try {
+    const results = await sbGet(`customers?current_name=ilike.*${encodeURIComponent(query)}*&select=uuid,current_name&limit=8`);
+    if (results.length === 0) {
+      dd.style.display = 'none';
+      status.innerHTML = '<span style="color:var(--red)">No customer found</span>';
+      return;
+    }
+
+    dd.innerHTML = results.map(c =>
+      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+        onclick="selectSendCustomer('${c.uuid}','${escapeHtml(c.current_name)}')">${escapeHtml(c.current_name)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${c.uuid.substring(0,8)}...</span></div>`
+    ).join('');
+    dd.style.display = 'block';
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--red)">Search error</span>';
+  }
+}
+
+function selectSendCustomer(uuid, name) {
+  sendCustomerUuid = uuid;
+  document.getElementById('send-customer').value = name;
+  document.getElementById('send-customer-dropdown').style.display = 'none';
+  document.getElementById('send-customer-status').innerHTML = '<span style="color:var(--green)">✓ ' + escapeHtml(name) + ' (' + uuid.substring(0,8) + '...)</span>';
+}
+
+async function searchProductForSend(query) {
+  const dd = document.getElementById('send-product-dropdown');
+  const status = document.getElementById('send-product-status');
+  sendProductGroupId = null;
+  sendProductGroupName = null;
+
+  if (query.length < 2) { dd.style.display = 'none'; status.innerHTML = ''; return; }
+
+  try {
+    // Only show available product groups (ones that are in the server)
+    const results = await sbGet(`product_groups?display_name=ilike.*${encodeURIComponent(query)}*&is_available=eq.true&select=id,display_name,server_item_name&limit=8`);
+    if (results.length === 0) {
+      dd.style.display = 'none';
+      status.innerHTML = '<span style="color:var(--yellow)">No available products match</span>';
+      return;
+    }
+
+    dd.innerHTML = results.map(p =>
+      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+        onclick="selectSendProduct(${p.id},'${escapeHtml(p.display_name).replace(/'/g, "\\'")}')">
+        <span style="color:var(--green)">✅</span> ${escapeHtml(p.display_name)}
+        <span style="color:var(--text-dim);font-size:10px;display:block;margin-top:2px">Server: ${escapeHtml(p.server_item_name)}</span>
+      </div>`
+    ).join('');
+    dd.style.display = 'block';
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--red)">Search error</span>';
+  }
+}
+
+function selectSendProduct(id, name) {
+  sendProductGroupId = id;
+  sendProductGroupName = name;
+  document.getElementById('send-product').value = name;
+  document.getElementById('send-product-dropdown').style.display = 'none';
+  document.getElementById('send-product-status').innerHTML = '<span style="color:var(--green)">✓ ' + escapeHtml(name) + '</span>';
+}
+
+async function sendItemInWorld() {
+  const statusEl = document.getElementById('send-status');
+
+  if (!sendCustomerUuid) {
+    showToast('Please select a valid customer', true);
+    return;
+  }
+  if (!sendProductGroupId) {
+    showToast('Please select an available product', true);
+    return;
+  }
+
+  statusEl.innerHTML = '<span style="color:var(--text-muted)">Queuing delivery...</span>';
+
+  try {
+    // Insert redelivery request — the server will pick this up
+    await sbPost('redelivery_requests', {
+      customer_uuid: sendCustomerUuid,
+      product_group_id: sendProductGroupId,
+      status: 'pending'
+    });
+
+    // Also record as a purchase if checkbox is checked
+    if (document.getElementById('send-also-record').checked) {
+      // Find a raw_product linked to this group
+      const rawProducts = await sbGet(`raw_products?product_group_id=eq.${sendProductGroupId}&select=id&limit=1`);
+      const rawProductId = rawProducts.length > 0 ? rawProducts[0].id : null;
+
+      await sbPost('purchases', {
+        buyer_uuid: sendCustomerUuid,
+        recipient_uuid: sendCustomerUuid,
+        buyer_name: document.getElementById('send-customer').value,
+        recipient_name: null,
+        raw_product_id: rawProductId,
+        is_gift: false,
+        purchased_at: new Date().toISOString(),
+        region: 'Admin Send'
+      });
+    }
+
+    statusEl.innerHTML = '<span style="color:var(--green)">✅ Delivery queued! The server will deliver within 60 seconds.</span>';
+    showToast('Item queued for delivery!');
+
+    // Clear form
+    document.getElementById('send-customer').value = '';
+    document.getElementById('send-product').value = '';
+    document.getElementById('send-customer-status').innerHTML = '';
+    document.getElementById('send-product-status').innerHTML = '';
+    sendCustomerUuid = null;
+    sendProductGroupId = null;
+    sendProductGroupName = null;
+  } catch(e) {
+    if (e.message.includes('idx_one_pending_per_product')) {
+      statusEl.innerHTML = '<span style="color:var(--yellow)">⚠️ This item is already queued for this customer.</span>';
+    } else {
+      statusEl.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>';
+    }
+  }
+}
+
+// ---- CSV Import ----
+async function importCsv() {
+  const fileInput = document.getElementById('csv-file');
+  const progress = document.getElementById('csv-progress');
+  const file = fileInput.files[0];
+  if (!file) { showToast('Select a CSV file first', true); return; }
+
+  progress.innerHTML = '<span style="color:var(--text-muted)">Reading file...</span>';
+
+  const text = await file.text();
+  const lines = text.split(/\\n/).filter(l => l.trim());
+
+  function parseCsvLine(line) {
+    const result = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') inQuotes = !inQuotes;
+      else if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
+      else current += ch;
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  const MONTHS = { january:0, february:1, march:2, april:3, may:4, june:5,
+                   july:6, august:7, september:8, october:9, november:10, december:11 };
+
+  function parseDate(str) {
+    if (!str) return null;
+    const cleaned = str.replace(/"/g, "").trim();
+    let d = new Date(cleaned);
+    if (!isNaN(d.getTime())) return d.toISOString();
+    const m = cleaned.match(/(\\d{1,2}):(\\d{2})\\s*(AM|PM)\\s*\\w+,\\s*(\\w+)\\s+(\\d{1,2}),\\s*(\\d{4})/i);
+    if (m) {
+      let hour = parseInt(m[1]);
+      const min = parseInt(m[2]);
+      const ampm = m[3].toUpperCase();
+      const month = MONTHS[m[4].toLowerCase()];
+      const day = parseInt(m[5]);
+      const year = parseInt(m[6]);
+      if (ampm === "PM" && hour !== 12) hour += 12;
+      if (ampm === "AM" && hour === 12) hour = 0;
+      if (month !== undefined) return new Date(year, month, day, hour, min).toISOString();
+    }
+    return null;
+  }
+
+  const sales = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    if (cols.length >= 8) {
+      sales.push({ product: cols[0], customer: cols[1], amount: cols[2], method: cols[3], reward: cols[4], recipient: cols[5], region: cols[6], date: cols[7] });
+    }
+  }
+
+  progress.innerHTML = `<span style="color:var(--text-muted)">Parsed ${sales.length.toLocaleString()} rows. Building customer lookup...</span>`;
+
+  // Build lookup
+  const nameMap = await buildNameMap();
+
+  progress.innerHTML += '<br><span style="color:var(--text-muted)">Loading products...</span>';
+
+  // Load products
+  let products = [];
+  let pOff = 0;
+  while (true) {
+    const batch = await sbGet(`raw_products?select=id,product_name&offset=${pOff}&limit=10000`);
+    products.push(...batch);
+    if (batch.length < 10000) break;
+    pOff += 10000;
+  }
+  const productMap = new Map();
+  for (const p of products) productMap.set(p.product_name, p.id);
+
+  // Create any new products
+  const newProducts = [...new Set(sales.map(r => r.product))].filter(p => !productMap.has(p));
+  if (newProducts.length > 0) {
+    for (let i = 0; i < newProducts.length; i += 500) {
+      const batch = newProducts.slice(i, i + 500).map(p => ({ product_name: p }));
+      try {
+        await sbPost('raw_products?on_conflict=product_name', batch);
+      } catch(e) {}
+    }
+    // Reload product IDs
+    products = [];
+    pOff = 0;
+    while (true) {
+      const batch = await sbGet(`raw_products?select=id,product_name&offset=${pOff}&limit=10000`);
+      products.push(...batch);
+      if (batch.length < 10000) break;
+      pOff += 10000;
+    }
+    for (const p of products) productMap.set(p.product_name, p.id);
+  }
+
+  progress.innerHTML = `<span style="color:var(--accent)">Importing ${sales.length.toLocaleString()} transactions...</span>`;
+
+  let imported = 0, skipped = 0, errors = 0;
+  let batch = [];
+
+  for (let i = 0; i < sales.length; i++) {
+    const row = sales[i];
+    const buyerName = row.customer ? row.customer.toLowerCase().trim() : "";
+    const buyer = nameMap.get(buyerName);
+
+    if (!buyer) { skipped++; continue; }
+
+    const hasRecipient = row.recipient && row.recipient.trim() !== "";
+    const recipientName = hasRecipient ? row.recipient.trim() : null;
+    const recipient = recipientName ? nameMap.get(recipientName.toLowerCase().trim()) : null;
+    const isGift = hasRecipient && recipientName && recipientName.toLowerCase().trim() !== buyerName;
+
+    batch.push({
+      buyer_uuid: buyer.uuid,
+      recipient_uuid: recipient ? recipient.uuid : buyer.uuid,
+      buyer_name: row.customer || null,
+      recipient_name: recipientName || null,
+      raw_product_id: productMap.get(row.product) || null,
+      is_gift: isGift === true,
+      purchased_at: parseDate(row.date),
+      region: row.region || null
+    });
+
+    if (batch.length >= 500) {
+      try {
+        await sbPost('purchases', batch);
+        imported += batch.length;
+      } catch(e) {
+        errors += batch.length;
+      }
+      batch = [];
+      const pct = Math.round(((imported + skipped + errors) / sales.length) * 100);
+      progress.innerHTML = `<span style="color:var(--accent)">${pct}% — ${imported.toLocaleString()} imported, ${skipped.toLocaleString()} skipped</span>`;
+    }
+  }
+
+  if (batch.length > 0) {
+    try { await sbPost('purchases', batch); imported += batch.length; }
+    catch(e) { errors += batch.length; }
+  }
+
+  progress.innerHTML = `
+    <span style="color:var(--green);font-size:14px">Import complete!</span><br>
+    <span style="color:var(--text-muted)">
+      ✅ Imported: ${imported.toLocaleString()}<br>
+      ${skipped > 0 ? '⚠️ Skipped (no customer match): ' + skipped.toLocaleString() + '<br>' : ''}
+      ${errors > 0 ? '❌ Errors: ' + errors.toLocaleString() + '<br>' : ''}
+      ${newProducts.length > 0 ? '📦 New products created: ' + newProducts.length : ''}
+    </span>`;
+  importNameMap = null; // clear cache
 }
 
 // Close dropdowns on click outside
