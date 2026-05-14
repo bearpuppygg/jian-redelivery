@@ -237,7 +237,7 @@
       <button class="nav-btn active" onclick="showTab('dashboard')">Dashboard</button>
       <button class="nav-btn" onclick="showTab('products')">Products</button>
       <button class="nav-btn" onclick="showTab('customers')">Customers</button>
-      <button class="nav-btn" onclick="showTab('import')">Data Import</button>
+      <button class="nav-btn" onclick="showTab('import')">Add Info</button>
     </div>
   </div>
 
@@ -795,7 +795,7 @@ function loadImportTab() {
   const el = document.getElementById('tab-import');
   el.innerHTML = `
     <div class="section-header">
-      <div class="section-title">Data Import</div>
+      <div class="section-title">Add Info</div>
     </div>
 
     <!-- Manual Entry -->
@@ -881,6 +881,45 @@ function loadImportTab() {
         </label>
       </div>
       <div id="send-status" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Credit Management -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:24px;margin-bottom:24px">
+      <div style="font-size:14px;color:var(--accent);margin-bottom:8px;letter-spacing:1px">Manage Customer Credit</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px">
+        Look up a customer and add, subtract, or set their credit balance.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Customer</label>
+          <div style="position:relative">
+            <input class="search-bar" id="credit-customer" style="width:100%;margin-top:4px" placeholder="Name or UUID..."
+              oninput="searchCustomerForCredit(this.value)">
+            <div id="credit-customer-dropdown" style="position:absolute;top:100%;left:0;width:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:3px;z-index:50;display:none"></div>
+          </div>
+          <div id="credit-customer-status" style="font-size:11px;margin-top:4px;height:16px"></div>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Current Balance</label>
+          <div id="credit-current" style="font-size:22px;font-weight:400;color:var(--text);margin-top:8px">—</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:end;margin-bottom:16px">
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Action</label>
+          <select id="credit-action" style="display:block;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:13px;border-radius:3px;margin-top:4px;outline:none">
+            <option value="add">Add credits</option>
+            <option value="subtract">Subtract credits</option>
+            <option value="set">Set balance to</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)">Amount</label>
+          <input class="search-bar" id="credit-amount" type="number" min="0" style="width:100%;margin-top:4px" placeholder="0">
+        </div>
+        <button class="btn-sm save" onclick="submitCreditChange()" style="padding:8px 24px;font-size:11px;margin-bottom:1px">Apply</button>
+      </div>
+      <div id="credit-status" style="font-size:12px;height:18px"></div>
     </div>
   `;
 }
@@ -1131,6 +1170,148 @@ async function submitManualEntry() {
 }
 
 // ---- CSV Import ----
+// ---- Credit Management ----
+let creditCustomerUuid = null;
+let creditCurrentBalance = 0;
+
+async function searchCustomerForCredit(query) {
+  const dd = document.getElementById('credit-customer-dropdown');
+  const status = document.getElementById('credit-customer-status');
+  const balanceEl = document.getElementById('credit-current');
+  creditCustomerUuid = null;
+  balanceEl.textContent = '—';
+
+  if (query.length < 2) { dd.style.display = 'none'; status.innerHTML = ''; return; }
+
+  try {
+    let results;
+
+    if (isUuid(query)) {
+      results = await sbGet(`customers?uuid=eq.${query.trim()}&select=uuid,current_name,credit`);
+      if (results.length > 0) {
+        selectCreditCustomer(results[0].uuid, results[0].current_name, results[0].credit);
+        return;
+      }
+      status.innerHTML = '<span style="color:var(--text-muted)">Not in database, checking Second Life...</span>';
+      dd.style.display = 'none';
+      const slData = await slLookupName(query.trim());
+      if (slData && slData.username) {
+        const displayName = slData.lastname && slData.lastname !== 'Resident'
+          ? slData.username + '.' + slData.lastname
+          : slData.username;
+        dd.innerHTML = `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--accent)"
+          onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+          onclick="addAndSelectCreditCustomer('${query.trim()}','${escapeHtml(displayName)}')">
+          <span style="color:var(--purple)">SL:</span> ${escapeHtml(displayName)}<br>
+          <span style="color:var(--text-dim);font-size:10px">Click to add to database and select</span>
+        </div>`;
+        dd.style.display = 'block';
+        status.innerHTML = '<span style="color:var(--purple)">Found in Second Life</span>';
+      } else {
+        status.innerHTML = '<span style="color:var(--red)">UUID not found</span>';
+      }
+      return;
+    }
+
+    results = await sbGet(`customers?current_name=ilike.*${encodeURIComponent(query)}*&select=uuid,current_name,credit&limit=8`);
+
+    let html = results.map(c =>
+      `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+        onclick="selectCreditCustomer('${c.uuid}','${escapeHtml(c.current_name)}',${c.credit || 0})">${escapeHtml(c.current_name)}<span style="color:var(--text-dim);font-size:10px;margin-left:8px">${c.credit || 0} credits</span></div>`
+    ).join('');
+
+    if (results.length < 3 && query.length >= 3) {
+      const parts = query.split('.');
+      const slData = await slLookupUuid(parts[0], parts[1]);
+      if (slData && slData.agent_id && slData.agent_id !== '00000000-0000-0000-0000-000000000000') {
+        const alreadyShown = results.some(r => r.uuid === slData.agent_id);
+        if (!alreadyShown) {
+          const slName = slData.lastname && slData.lastname !== 'Resident'
+            ? slData.username + '.' + slData.lastname
+            : slData.username;
+          html += `<div style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"
+            onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+            onclick="addAndSelectCreditCustomer('${slData.agent_id}','${escapeHtml(slName)}')">
+            <span style="color:var(--purple)">SL:</span> ${escapeHtml(slName)}<br>
+            <span style="color:var(--text-dim);font-size:10px">Click to add to database and select</span>
+          </div>`;
+        }
+      }
+    }
+
+    if (!html) {
+      dd.style.display = 'none';
+      status.innerHTML = '<span style="color:var(--red)">No customer found</span>';
+      return;
+    }
+    dd.innerHTML = html;
+    dd.style.display = 'block';
+    status.innerHTML = '';
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--red)">Search error</span>';
+  }
+}
+
+function selectCreditCustomer(uuid, name, credit) {
+  creditCustomerUuid = uuid;
+  creditCurrentBalance = credit || 0;
+  document.getElementById('credit-customer').value = name;
+  document.getElementById('credit-customer-dropdown').style.display = 'none';
+  document.getElementById('credit-customer-status').innerHTML = '<span style="color:var(--green)">✓ ' + escapeHtml(name) + ' (' + uuid.substring(0,8) + '...)</span>';
+  document.getElementById('credit-current').textContent = creditCurrentBalance.toLocaleString() + ' L$';
+}
+
+async function addAndSelectCreditCustomer(uuid, name) {
+  try {
+    await sbPost('customers', { uuid: uuid, current_name: name, credit: 0 });
+    showToast('Customer "' + name + '" added to database');
+  } catch(e) {}
+  selectCreditCustomer(uuid, name, 0);
+}
+
+async function submitCreditChange() {
+  if (!creditCustomerUuid) {
+    showToast('Please select a customer first', true);
+    return;
+  }
+
+  const action = document.getElementById('credit-action').value;
+  const amount = parseInt(document.getElementById('credit-amount').value) || 0;
+  const statusEl = document.getElementById('credit-status');
+
+  if (amount < 0) {
+    showToast('Amount must be positive', true);
+    return;
+  }
+  if (amount === 0 && action !== 'set') {
+    showToast('Enter an amount', true);
+    return;
+  }
+
+  let newBalance;
+  if (action === 'add') {
+    newBalance = creditCurrentBalance + amount;
+  } else if (action === 'subtract') {
+    newBalance = Math.max(0, creditCurrentBalance - amount);
+  } else {
+    newBalance = amount;
+  }
+
+  try {
+    await sbPatch(`customers?uuid=eq.${creditCustomerUuid}`, { credit: newBalance, updated_at: new Date().toISOString() });
+    creditCurrentBalance = newBalance;
+    document.getElementById('credit-current').textContent = newBalance.toLocaleString() + ' L$';
+    document.getElementById('credit-amount').value = '';
+
+    const actionLabel = action === 'add' ? 'Added ' + amount : action === 'subtract' ? 'Subtracted ' + amount : 'Set to ' + amount;
+    statusEl.innerHTML = '<span style="color:var(--green)">✓ ' + actionLabel + ' — New balance: ' + newBalance.toLocaleString() + ' L$</span>';
+    showToast('Credit updated!');
+  } catch(e) {
+    statusEl.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>';
+  }
+}
+
 // ---- Send Item In-World ----
 let sendCustomerUuid = null;
 let sendProductGroupId = null;
